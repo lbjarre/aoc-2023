@@ -12,63 +12,49 @@
 
 solve(18) :-
     phrase_from_file(parse(Instr), "input/day18.txt"),
-    part2(Instr, S2),
+    area(Instr, S1),
+    format("part 1: ~d~n", [S1]),
+    maplist(correct_instr, Instr, Corrected),
+    area(Corrected, S2),
     format("part 2: ~d~n", [S2]).
-    % part1(Instr, S1),
-    % format("part 1: ~d~n", [S1]).
-part1(Instr, S) :-
-    dig_perimiter(Instr, st(_, Perimiter)),
-    % starting point picked at random, don't know if there is a better way of
-    % finding a point that is known to be inside the perimiter.
-    flood_fill(Perimiter, [0,-1], Filled),
-    maplist(assoc_size, [Perimiter, Filled], Sizes),
-    sum(Sizes, #=, S).
-part2(Instr, S) :-
-    maplist(correct_instr, Instr, InstrCorr),
-    dig_perimiter(InstrCorr, st(_, Perimiter)),
-    assoc_size(Perimiter, S).
 
-dig_perimiter(Instr, St) :-
-    empty_assoc(Digged0),
-    foldl(dig_perimiter_, Instr, st([0,0], Digged0), St).
-dig_perimiter_(i(Dir, Count, _), st(Pos0, Digged0), st(Pos, Digged)) :-
-    walk(Dir, Pos0, Count, Positions),
-    foldl(fold_assoc(1), Positions, Digged0, Digged),
-    reverse(Positions, [Pos|_]).
-dig_perimiter_(i(Dir, Count), st(Pos0, Digged0), st(Pos, Digged)) :-
-    walk(Dir, Pos0, Count, Positions),
-    foldl(fold_assoc(1), Positions, Digged0, Digged),
-    reverse(Positions, [Pos|_]).
+% Area calculation using Pick's theorem
+% https://en.wikipedia.org/wiki/Pick%27s_theorem
+%
+% Area = #Interior + (#Perimiter / 2) + 1
+%
+area(Instr, S) :-
+    instructions_points(Instr, Points),
+    shoelace(Points, Interior),
+    instructions_perimiter(Instr, Perimiter),
+    S #= Interior + (Perimiter div 2) + 1.
 
-fold_assoc(V, K, A0, A) :-
-    put_assoc(K, A0, V, A).
-assoc_size(A, S) :-
-    assoc_to_list(A, L), length(L, S).
+% Interior area calculation using the Shoelace formula
+% https://en.wikipedia.org/wiki/Shoelace_formula
+shoelace(Points, Area) :-
+    shoelace_(Points, 0, Shoelace),
+    Area #= abs(Shoelace) div 2.
+shoelace_([[X0,Y0], [X1,Y1] | Rest], Acc0, Area) :-
+    Acc #= Acc0 + (X0 * Y1) - (Y0 * X1),
+    shoelace_([[X1,Y1]|Rest], Acc, Area).
+shoelace_([_], Area, Area).
 
-flood_fill(Perimiter, Start, Filled) :-
-    empty_assoc(Filled0),
-    flood_fill(Perimiter, Start, Filled0, Filled).
-flood_fill(Perimiter, Pos, Filled0, Filled) :-
-    (   (   get_assoc(Pos, Perimiter, _)
-        ;   get_assoc(Pos, Filled0, _)
-        )
-    ->  Filled = Filled0
-    ;   put_assoc(Pos, Filled0, 1, Filled1),
-        foldl(flood_fill_dir(Perimiter, Pos), [[0,-1],[0,1],[-1,0],[1,0]], Filled1, Filled)
-    ).
-flood_fill_dir(Perimiter, Pos0, Dir, Filled0, Filled) :-
-    dir_pos_next(Dir, Pos0, Pos),
-    flood_fill(Perimiter, Pos, Filled0, Filled).
+instructions_points(Instr, Points) :-
+    foldl(instructions_points_, Instr, st([0,0], [[0,0]]), st(_, Points)).
+instructions_points_(i(Dir, Count, _), st(Pos0, Points0), st(Pos, [Pos|Points0])) :-
+    walk(Dir, Pos0, Count, Pos).
+instructions_points_(i(Dir, Count), st(Pos0, Points0), st(Pos, [Pos|Points0])) :-
+    walk(Dir, Pos0, Count, Pos).
 
-walk(_, _, 0, []).
-walk(Dir, Pos0, N0, [Pos|Rest]) :-
-    N0 #> 0,
-    N #= N0 - 1,
-    dir_pos_next(Dir, Pos0, Pos),
-    walk(Dir, Pos, N, Rest).
-dir_pos_next([Dx,Dy], [X0,Y0], [X,Y]) :-
-    X #= X0 + Dx,
-    Y #= Y0 + Dy.
+walk([Dx,Dy], [X0,Y0], N, [X,Y]) :-
+    X #= X0 + N * Dx,
+    Y #= Y0 + N * Dy.
+
+instructions_perimiter(Instr, Perim) :-
+    maplist(counts_, Instr, Counts),
+    sum(Counts, #=, Perim).
+counts_(i(_, Count, _), Count).
+counts_(i(_, Count), Count).
 
 correct_instr(i(_, _, Hex), i(Dir, C)) :-
     length(CCh, 5),
